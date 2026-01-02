@@ -1,3 +1,46 @@
+name: Agent CI
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+  schedule:
+    - cron: '0 2 * * 1' # weekly on Monday UTC
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+      - name: Run tests
+        run: |
+          python -m pytest -q
+
+  orchestrator-dryrun:
+    needs: tests
+    runs-on: ubuntu-latest
+    if: ${{ secrets.LLM_API_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install deps
+        run: python -m pip install --upgrade pip
+      - name: Run orchestrator (dry-run)
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          python dev/agents/auto_develop.py --task "CI dry-run" --use-llm --dry-run
 name: CI + Agent Run
 
 on:

@@ -31,9 +31,28 @@ def run(cmd, **kwargs):
 
 
 def run_tests() -> bool:
+    """Run tests in a controlled environment.
+
+    Honors the environment variable `SKIP_TESTS` (if set to '1' or 'true').
+    Creates a local `.tmp_tests` directory and sets `TMP`, `TEMP`, `TMPDIR`
+    so pytest/atomicwrites uses a repo-local temporary directory to avoid
+    system-wide permission issues.
+    """
+    skip = os.environ.get("SKIP_TESTS", "0").lower() in ("1", "true", "yes")
+    if skip:
+        print("SKIP_TESTS set; skipping tests.")
+        return True
     print("Running tests...")
-    res = run([sys.executable, "-m", "pytest", "-q"])
-    return res.returncode == 0
+    try:
+        tmpdir = os.path.join(os.getcwd(), ".tmp_tests")
+        os.makedirs(tmpdir, exist_ok=True)
+        env = os.environ.copy()
+        env.update({"TMP": tmpdir, "TEMP": tmpdir, "TMPDIR": tmpdir})
+        res = run([sys.executable, "-m", "pytest", "-q"], env=env)
+        return res.returncode == 0
+    except Exception as e:
+        print("Error while running tests:", e)
+        return False
 
 
 def git(cmd):
@@ -168,6 +187,7 @@ def main():
     p.add_argument("--use-llm", action="store_true", help="Use LLM to generate patch suggestion")
     p.add_argument("--push", action="store_true", help="Push branch to origin after commit")
     p.add_argument("--pr", action="store_true", help="Create a GitHub PR after push (requires GITHUB_TOKEN)")
+    p.add_argument("--skip-tests", action="store_true", help="Skip running tests (also honored via SKIP_TESTS=1)")
     args = p.parse_args()
 
     timestamp = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")
@@ -181,6 +201,10 @@ def main():
             patch_text = request_patch_from_llm(args.task)
         except Exception as e:
             print("LLM call failed:", e)
+
+    # honor --skip-tests flag by setting env var used by run_tests
+    if args.skip_tests:
+        os.environ["SKIP_TESTS"] = "1"
 
     if patch_text:
         print("LLM returned a patch (length=%d)" % len(patch_text))
