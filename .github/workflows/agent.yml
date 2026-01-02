@@ -1,0 +1,49 @@
+name: GPT-5 mini Agent Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_description:
+        description: 'エージェントへの指示を入力してください'
+        required: true
+        default: '現在のコードを分析して改善案を出して'
+
+jobs:
+  run-gpt5-mini:
+    runs-on: ubuntu-latest
+    steps:
+      - name: コードをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python環境構築
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: 依存ライブラリのインストール
+        run: pip install openai  # GitHub ModelsはOpenAI形式のライブラリで動きます
+
+      - name: GPT-5 mini エージェント実行
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          python - <<EOF
+          import os
+          from openai import OpenAI
+
+          client = OpenAI(
+              base_url="https://models.inference.ai.azure.com",
+              api_key=os.environ.get("LLM_API_KEY")
+          )
+
+          response = client.chat.completions.create(
+              messages=[
+                  {"role": "system", "content": "あなたは優秀なGitHub Copilotエージェントです。"},
+                  {"role": "user", "content": "${{ github.event.inputs.task_description }}"}
+              ],
+              model="gpt-5-mini" # ここで最新モデルを指定
+          )
+
+          print("--- GPT-5 mini からの回答 ---")
+          print(response.choices[0].message.content)
+          EOF
