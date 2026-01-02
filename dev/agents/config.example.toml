@@ -1,0 +1,6 @@
+# Example config for agent scaffold
+# Copy to dev/agents/config.toml or set env vars.
+
+llm_provider = "openai"  # or other
+llm_model = "gpt-4o"     # placeholder
+# API key should be set via environment variable, not committed.
