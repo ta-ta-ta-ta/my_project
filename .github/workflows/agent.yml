@@ -41,7 +41,7 @@ jobs:
                   {"role": "system", "content": "あなたは優秀なGitHub Copilotエージェントです。"},
                   {"role": "user", "content": "${{ github.event.inputs.task_description }}"}
               ],
-              model="gpt-5-mini" # ここで最新モデルを指定
+              model="gpt-4o-mini" # ここで最新モデルを指定
           )
 
           print("--- GPT-5 mini からの回答 ---")
