@@ -1,4 +1,4 @@
-name: GPT-5 mini Agent Run
+name: GPT-4o mini Agent Run
 
 on:
   workflow_dispatch:
