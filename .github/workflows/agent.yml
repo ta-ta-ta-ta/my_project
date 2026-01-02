@@ -1,16 +1,18 @@
-name: GPT-4o mini Agent Run
+name: GPT-4o-mini Agent Run & Auto Commit
 
 on:
   workflow_dispatch:
     inputs:
       task_description:
-        description: 'エージェントへの指示を入力してください'
+        description: '作成したいプログラムの指示を入力'
         required: true
-        default: '現在のコードを分析して改善案を出して'
+        default: 'hello_world.pyを作成して'
 
 jobs:
-  run-gpt5-mini:
+  run-and-commit:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: コードをチェックアウト
         uses: actions/checkout@v4
@@ -20,10 +22,10 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: 依存ライブラリのインストール
-        run: pip install openai  # GitHub ModelsはOpenAI形式のライブラリで動きます
+      - name: 依存ライブラリインストール
+        run: pip install openai
 
-      - name: GPT-5 mini エージェント実行
+      - name: GPT-4o-mini エージェント実行
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
         run: |
@@ -36,14 +38,26 @@ jobs:
               api_key=os.environ.get("LLM_API_KEY")
           )
 
+          # モデル名に合わせてプロンプトを最適化
+          prompt = "あなたはGPT-4o-miniとして、以下の指示に基づきPythonコードのみを出力してください。解説は不要です。\n指示: ${{ github.event.inputs.task_description }}"
+          
           response = client.chat.completions.create(
-              messages=[
-                  {"role": "system", "content": "あなたは優秀なGitHub Copilotエージェントです。"},
-                  {"role": "user", "content": "${{ github.event.inputs.task_description }}"}
-              ],
-              model="gpt-4o-mini" # ここで最新モデルを指定
+              messages=[{"role": "user", "content": prompt}],
+              model="gpt-4o-mini"
           )
 
-          print("--- GPT-5 mini からの回答 ---")
-          print(response.choices[0].message.content)
+          code = response.choices[0].message.content.strip()
+          # Markdownの装飾を除去
+          code = code.replace('```python', '').replace('```', '')
+
+          with open('generated_code.py', 'w', encoding='utf-8') as f:
+              f.write(code)
           EOF
+
+      - name: 生成されたファイルをコミットしてPush
+        run: |
+          git config --local user.email "p.w.n.g-444@hotmail.co.jp"
+          git config --local user.name "ta-ta-ta-ta"
+          git add generated_code.py
+          git commit -m "GPT-4o-mini: ${{ github.event.inputs.task_description }}"
+          git push
