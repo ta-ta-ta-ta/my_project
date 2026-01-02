@@ -1,16 +1,47 @@
 ```python
 import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
 
-# 1. CSVファイルを読み込む関数
-def read_csv(file_path):
-    return pd.read_csv(file_path)
+class TaskManager:
+    def __init__(self):
+        self.tasks = pd.DataFrame(columns=['Task', 'Due Date', 'Status'])
 
-# 2. 日付のリストを生成する関数
-def generate_date_range(start_date, end_date):
-    return [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+    def add_task(self, task, due_date):
+        self.tasks = self.tasks.append({'Task': task, 'Due Date': due_date, 'Status': 'Pending'}, ignore_index=True)
 
-# 3. データフレームの特定の列の値を集計する関数
-def aggregate_column(df, column_name):
-    return df[column_name].sum()
+    def mark_task_completed(self, task):
+        self.tasks.loc[self.tasks['Task'] == task, 'Status'] = 'Completed'
+
+    def get_pending_tasks(self):
+        return self.tasks[self.tasks['Status'] == 'Pending']
+
+    def get_overdue_tasks(self):
+        current_date = datetime.now().date()
+        return self.tasks[self.tasks['Due Date'] < current_date]
+
+class ReportGenerator:
+    def __init__(self, tasks_df):
+        self.tasks_df = tasks_df
+
+    def generate_report(self):
+        completed_tasks = self.tasks_df[self.tasks_df['Status'] == 'Completed']
+        overdue_tasks = self.tasks_df[self.tasks_df['Status'] == 'Pending' & (self.tasks_df['Due Date'] < datetime.now().date())]
+        report = {
+            'Total Tasks': len(self.tasks_df),
+            'Completed Tasks': len(completed_tasks),
+            'Pending Tasks': len(overdue_tasks),
+            'Overdue Tasks': len(overdue_tasks)
+        }
+        return report
+
+# Example usage
+task_manager = TaskManager()
+task_manager.add_task("Report generation", datetime(2023, 10, 20))
+task_manager.add_task("Code review", datetime(2023, 10, 25))
+task_manager.mark_task_completed("Report generation")
+
+report_generator = ReportGenerator(task_manager.tasks)
+report = report_generator.generate_report()
+print(report)
 ```
