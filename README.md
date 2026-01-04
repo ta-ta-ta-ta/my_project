@@ -47,4 +47,39 @@ Files of interest:
 - `GITHUB_TOKEN`: token to create PRs from the agent (repo scope required).
 - `SKIP_TESTS`: set to `1` to skip running tests (or use `--skip-tests`).
 
+LLM provider options
+- `LLM_PROVIDER`: set to one of the following:
+  - `openai` (default): uses OpenAI API (requires `LLM_API_KEY`)
+  - `vscode` / `vscode_chat`: uses VS Code Copilot Chat API (requires GitHub Copilot subscription and `VSCODE_COPILOT_HELPER` script)
+  - `copilot` / `gh_copilot`: uses GitHub CLI Copilot extension (requires `gh` CLI with copilot extension)
+  - `cli`: uses a custom CLI tool (requires `LLM_CLI_COMMAND`)
+
+### Using VS Code Copilot Chat (recommended if you have Copilot subscription)
+
+**Requirements:**
+- GitHub Copilot subscription (Individual $10/mo, Business $19/user/mo, or Enterprise $39/user/mo)
+- VS Code with GitHub Copilot extension installed and signed in
+- Helper script to bridge Python and VS Code Chat API
+
+**Setup:**
+1. Create a helper script (e.g., `vscode_copilot_helper.js` or `.py`) that:
+   - Reads the prompt from the first argument (file path)
+   - Calls VS Code Copilot Chat API (via VS Code extension API or task)
+   - Writes the response to the second argument (output file path)
+
+2. Set environment variables:
+```powershell
+$env:LLM_PROVIDER = "vscode"
+$env:VSCODE_COPILOT_HELPER = "node path/to/vscode_copilot_helper.js"
+```
+
+**Note:** A sample helper script will be added in future updates. For now, you can use `openai` provider with API key or `cli` provider with a local LLM.
+
+### Using CLI provider (for local LLMs like Ollama)
+
+```powershell
+$env:LLM_PROVIDER = "cli"
+$env:LLM_CLI_COMMAND = "ollama run codellama"
+```
+
 CI: A sample GitHub Actions workflow is added at `.github/workflows/agent-ci.yml`.

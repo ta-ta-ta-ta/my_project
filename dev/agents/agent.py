@@ -111,10 +111,147 @@ def call_openai_chat(prompt: str, model: str = "gpt-4o") -> str:
         with urllib.request.urlopen(req, timeout=60) as resp:
             text = resp.read().decode("utf-8")
             j = json.loads(text)
-            # try to extract assistant content
             return j["choices"][0]["message"]["content"]
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"LLM request failed: {e.read().decode()}")
+
+
+def call_cli_llm(prompt: str, cmd: str, timeout: int = 60) -> str:
+    """Call a generic LLM CLI tool. The command should read prompt from stdin and write response to stdout.
+
+    Example: set `LLM_CLI_COMMAND='github-copilot-cli --chat'` (depends on local tool).
+    For gh copilot: use special handler since it doesn't accept stdin.
+    """
+    if not cmd:
+        raise RuntimeError("LLM_CLI_COMMAND not set for CLI provider")
+    
+    # Special handling for gh copilot which doesn't read stdin
+    if 'gh copilot' in cmd.lower() or 'gh.exe copilot' in cmd.lower():
+        return call_gh_copilot(prompt, timeout=timeout)
+    
+    # Use shell to allow complex commands; pass prompt via stdin
+    try:
+        proc = subprocess.run(cmd, input=prompt, text=True, shell=True, capture_output=True, timeout=timeout)
+        if proc.returncode != 0:
+            raise RuntimeError(f"LLM CLI failed: {proc.stderr.strip()}")
+        return proc.stdout
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("LLM CLI command timed out")
+
+
+def call_gh_copilot(prompt: str, timeout: int = 60) -> str:
+    """Call gh copilot suggest using a temporary file for the prompt."""
+    import tempfile
+    gh_path = os.environ.get("GH_PATH", "gh")
+    if not os.path.exists(gh_path) and gh_path == "gh":
+        # Try default installation path on Windows
+        default_gh = r"C:\Program Files\GitHub CLI\gh.exe"
+        if os.path.exists(default_gh):
+            gh_path = default_gh
+    
+    # Write prompt to temp file and use gh copilot suggest
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding='utf-8') as f:
+        f.write(prompt)
+        temp_path = f.name
+    
+    try:
+        # Use gh copilot suggest with the prompt as argument
+        # Note: gh copilot is interactive, so we use suggest -t shell as a workaround
+        cmd = [gh_path, 'copilot', 'suggest', '-t', 'shell', prompt[:200]]  # truncate for safety
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        os.unlink(temp_path)
+        
+        if proc.returncode != 0:
+            raise RuntimeError(f"gh copilot failed: {proc.stderr}")
+        return proc.stdout
+    except subprocess.TimeoutExpired:
+        os.unlink(temp_path)
+        raise RuntimeError("gh copilot timed out")
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+        raise
+
+
+def call_vscode_chat(prompt: str, timeout: int = 120) -> str:
+    """Call VS Code Copilot Chat via a helper script.
+    
+    Requires:
+    - GitHub Copilot subscription (Individual/Business/Enterprise)
+    - VS Code with GitHub Copilot extension installed
+    - User must be signed in to GitHub Copilot in VS Code
+    - VSCODE_COPILOT_HELPER environment variable pointing to a bridge script
+    
+    This writes the prompt to a temp file and calls a helper script
+    that uses the VS Code Copilot Chat API and writes the result to an output file.
+    """
+    import tempfile
+    
+    # Create temp files for input prompt and output
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='_prompt.txt', encoding='utf-8') as f:
+        f.write(prompt)
+        prompt_file = f.name
+    
+    output_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='_output.txt', encoding='utf-8')
+    output_file.close()
+    output_path = output_file.name
+    
+    # VS Code command to invoke Copilot Chat (user must configure this)
+    vscode_helper = os.environ.get("VSCODE_COPILOT_HELPER", None)
+    
+    if not vscode_helper:
+        # Fallback: inform user to set up VS Code integration
+        os.unlink(prompt_file)
+        os.unlink(output_path)
+        raise RuntimeError(
+            "VS Code Copilot Chat integration not configured. "
+            "Please set VSCODE_COPILOT_HELPER to a script that reads from prompt file and writes to output file, "
+            "or use 'openai' provider with API key instead."
+        )
+    
+    try:
+        # Call the helper script: it should read prompt_file and write to output_path
+        cmd = [vscode_helper, prompt_file, output_path]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        
+        if proc.returncode != 0:
+            raise RuntimeError(f"VS Code Copilot helper failed: {proc.stderr}")
+        
+        # Read the output
+        with open(output_path, 'r', encoding='utf-8') as f:
+            result = f.read()
+        
+        os.unlink(prompt_file)
+        os.unlink(output_path)
+        return result
+    except subprocess.TimeoutExpired:
+        os.unlink(prompt_file)
+        os.unlink(output_path)
+        raise RuntimeError("VS Code Copilot helper timed out")
+    except Exception as e:
+        if os.path.exists(prompt_file):
+            os.unlink(prompt_file)
+        if os.path.exists(output_path):
+            os.unlink(output_path)
+        raise
+
+
+def call_llm(prompt: str, provider: str = "openai") -> str:
+    provider = (provider or os.environ.get("LLM_PROVIDER", "openai")).lower()
+    if provider in ("openai", "openai_api"):
+        model = os.environ.get("LLM_MODEL", "gpt-4o")
+        return call_openai_chat(prompt, model=model)
+    # VS Code Copilot Chat API (requires Copilot subscription)
+    if provider in ("vscode", "vscode_chat", "vscode_copilot"):
+        return call_vscode_chat(prompt)
+    # GitHub Copilot CLI provider
+    if provider in ("copilot", "copilot_cli", "gh_copilot"):
+        return call_gh_copilot(prompt)
+    # generic CLI-based provider (other local tools)
+    if provider == "cli":
+        cmd = os.environ.get("LLM_CLI_COMMAND")
+        return call_cli_llm(prompt, cmd=cmd)
+    raise RuntimeError(f"Unknown LLM provider: {provider}")
 
 
 def request_patch_from_llm(task: str) -> Optional[str]:
@@ -125,7 +262,11 @@ def request_patch_from_llm(task: str) -> Optional[str]:
         f"\n\nTask:\n{task}\n\nRepository files: list the important files and tests and any failing test output if available."
     )
     print("Requesting patch from LLM...")
-    content = call_openai_chat(prompt)
+    provider = os.environ.get("LLM_PROVIDER", "openai").lower()
+    try:
+        content = call_llm(prompt, provider=provider)
+    except Exception as e:
+        raise
     # Extract between markers
     start = content.find("PATCH_START")
     end = content.find("PATCH_END")
